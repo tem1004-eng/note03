@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Piltong Note - Pro</title>
+    <style>
+        :root {
+            --bg-color: #f4f4f7;
+            --sidebar-color: #ffffff;
+            --accent-color: #4a90e2;
+            --border-color: #d1d1d1;
+            --text-main: #333;
+            --note-bg: #1e1e1e;
+            --note-text: #f0f0f0;
+            --note-line: #3a3a3a;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Pretendard', sans-serif;
+            background-color: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo { font-size: 1.5rem; font-weight: bold; }
+        .header-btns button {
+            background-color: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 8px 15px;
+            margin-left: 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .toolbar {
+            background-color: var(--sidebar-color);
+            border-bottom: 1px solid var(--border-color);
+            padding: 10px 20px;
+        }
+
+        .meta-info { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+        .meta-info input, .meta-info select { padding: 6px; border: 1px solid var(--border-color); border-radius: 4px; }
+        .title-input { flex-grow: 1; font-weight: bold; }
+
+        .mode-tools { display: flex; gap: 10px; align-items: center; border-top: 1px solid #eee; padding-top: 10px; }
+        .btn-group { display: flex; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; }
+        .btn-group button { background: white; border: none; padding: 8px 12px; cursor: pointer; border-right: 1px solid #ddd; }
+        .btn-group button.active { background: var(--accent-color); color: white; }
+
+        main { flex-grow: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; align-items: center; background: #e5e5e5; }
+        .page-container {
+            width: 210mm; height: 297mm;
+            background-color: var(--note-bg);
+            padding: 40px; box-sizing: border-box;
+            position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        #text-editor {
+            width: 100%; height: 100%; border: none; outline: none;
+            font-size: 16px; line-height: 32px; color: var(--note-text);
+            background: repeating-linear-gradient(transparent, transparent 31px, var(--note-line) 31px, var(--note-line) 32px);
+            background-color: transparent;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        #canvas-editor { position: absolute; top: 40px; left: 40px; display: none; z-index: 5; cursor: crosshair; }
+
+        #save-modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 100;
+        }
+        .modal-content { background: white; padding: 20px; border-radius: 8px; width: 350px; }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo">Piltong Note</div>
+        <div class="header-btns">
+            <input type="file" id="file-loader" class="hidden" accept=".json" onchange="loadFromJson(this)">
+            <button onclick="document.getElementById('file-loader').click()">불러오기</button>
+            <button onclick="openSaveModal()">저장하기</button>
+        </div>
+    </header>
+
+    <div class="toolbar">
+        <div class="meta-info">
+            <input type="date" id="doc-date">
+            <input type="text" id="doc-location" placeholder="장소">
+            <input type="text" id="doc-title" class="title-input" placeholder="제목을 입력하세요">
+            <select id="folder-select"><option>기본 폴더</option></select>
+            <button onclick="addNewFolder()">+ 새 폴더</button>
+        </div>
+        <div class="mode-tools">
+            <div class="btn-group">
+                <button id="btn-kb" class="active" onclick="setMode('keyboard')">⌨️ 키보드</button>
+                <button id="btn-draw" onclick="setMode('draw')">🎨 그리기</button>
+            </div>
+            <div id="text-tools" class="dynamic-controls">
+                <button onclick="execCmd('bold')"><b>B</b></button>
+                <button onclick="execCmd('italic')"><i>I</i></button>
+                <button onclick="execCmd('underline')"><u>U</u></button>
+            </div>
+            <div id="draw-tools" class="hidden">
+                <input type="color" id="pen-color" value="#ffffff">
+                <input type="range" id="pen-size" min="1" max="20" value="2">
+                <button onclick="clearCanvas()">지우기</button>
+            </div>
+        </div>
+    </div>
+
+    <main>
+        <div class="page-container" id="printable-page">
+            <div id="text-editor" contenteditable="true" spellcheck="false"></div>
+            <canvas id="canvas-editor"></canvas>
+        </div>
+    </main>
+
+    <div id="save-modal">
+        <div class="modal-content">
+            <h3>저장 설정</h3>
+            <p>형식을 선택하세요:</p>
+            <button onclick="saveFile('json')" style="width:100%; padding:10px; margin-bottom:5px;">JSON으로 저장 (모든 설정 포함)</button>
+            <button onclick="saveFile('txt')" style="width:100%; padding:10px; margin-bottom:5px;">TXT로 저장 (글자만)</button>
+            <hr>
+            <button onclick="closeSaveModal()" style="width:100%; padding:5px;">취소</button>
+        </div>
+    </div>
+
+    <script>
+        let folders = ["기본 폴더", "업무", "개인"];
+        const canvas = document.getElementById('canvas-editor');
+        const ctx = canvas.getContext('2d');
+        const textEditor = document.getElementById('text-editor');
+
+        window.onload = () => {
+            document.getElementById('doc-date').valueAsDate = new Date();
+            resizeCanvas();
+        };
+
+        function resizeCanvas() {
+            const container = document.getElementById('printable-page');
+            canvas.width = container.clientWidth - 80;
+            canvas.height = container.clientHeight - 80;
+        }
+
+        function execCmd(cmd) {
+            document.execCommand(cmd, false, null);
+            textEditor.focus();
+        }
+
+        textEditor.addEventListener('keydown', function(e) {
+            if (e.ctrlKey) {
+                switch(e.key.toLowerCase()) {
+                    case 'b': e.preventDefault(); execCmd('bold'); break;
+                    case 'i': e.preventDefault(); execCmd('italic'); break;
+                    case 'u': e.preventDefault(); execCmd('underline'); break;
+                }
+            }
+        });
+
+        function setMode(mode) {
+            document.querySelectorAll('.btn-group button').forEach(b => b.classList.remove('active'));
+            if(mode === 'keyboard') {
+                document.getElementById('btn-kb').classList.add('active');
+                textEditor.style.display = 'block'; canvas.style.display = 'none';
+                document.getElementById('draw-tools').classList.add('hidden');
+                document.getElementById('text-tools').classList.remove('hidden');
+            } else {
+                document.getElementById('btn-draw').classList.add('active');
+                textEditor.style.display = 'none'; canvas.style.display = 'block';
+                document.getElementById('draw-tools').classList.remove('hidden');
+                document.getElementById('text-tools').classList.add('hidden');
+            }
+        }
+
+        function saveFile(format) {
+            const dateVal = document.getElementById('doc-date').value;
+            const folderVal = document.getElementById('folder-select').value;
+            
+            const data = {
+                title: document.getElementById('doc-title').value || "제목없음",
+                date: dateVal,
+                location: document.getElementById('doc-location').value,
+                folder: folderVal,
+                htmlContent: textEditor.innerHTML,
+                canvasData: canvas.toDataURL(),
+                mode: document.getElementById('btn-kb').classList.contains('active') ? 'keyboard' : 'draw'
+            };
+
+            let blob;
+            let filename = "";
+
+            if (format === 'json') {
+                blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
+                filename = `ptn${dateVal}${folderVal}.json`;
+            } else {
+                blob = new Blob([textEditor.innerText], {type: "text/plain"});
+                filename = data.title + ".txt";
+            }
+
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            link.click();
+            closeSaveModal();
+        }
+
+        function loadFromJson(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const data = JSON.parse(e.target.result);
+                document.getElementById('doc-title').value = data.title;
+                document.getElementById('doc-date').value = data.date;
+                document.getElementById('doc-location').value = data.location;
+                document.getElementById('folder-select').value = data.folder;
+                textEditor.innerHTML = data.htmlContent || "";
+
+                const img = new Image();
+                img.onload = () => {
+                    ctx.clearRect(0,0,canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0);
+                };
+                img.src = data.canvasData;
+                
+                setMode(data.mode);
+            };
+            reader.readAsText(file);
+        }
+
+        function openSaveModal() { document.getElementById('save-modal').style.display = 'flex'; }
+        function closeSaveModal() { document.getElementById('save-modal').style.display = 'none'; }
+
+        let drawing = false;
+        canvas.onmousedown = () => drawing = true;
+        canvas.onmouseup = () => { drawing = false; ctx.beginPath(); };
+        canvas.onmousemove = (e) => {
+            if(!drawing) return;
+            ctx.lineWidth = document.getElementById('pen-size').value;
+            ctx.strokeStyle = document.getElementById('pen-color').value;
+            ctx.lineCap = 'round';
+            const rect = canvas.getBoundingClientRect();
+            ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+            ctx.stroke();
+        };
+        function clearCanvas() { ctx.clearRect(0,0,canvas.width, canvas.height); }
+
+        function addNewFolder() {
+            const name = prompt("새 폴더 이름을 입력하세요:");
+            if (name && name.trim() !== "") {
+                const select = document.getElementById('folder-select');
+                const opt = document.createElement('option');
+                opt.value = name; opt.innerText = name;
+                select.appendChild(opt);
+                select.value = name;
+            }
+        }
+    </script>
+</body>
+</html>
